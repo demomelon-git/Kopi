@@ -1,4 +1,3 @@
-
 name: Build Kopi Browser APK
 
 on:
@@ -22,7 +21,9 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        
+        with:
+          gradle-version: '9.3.1'
+
       - name: Generate Debug Keystore
         run: |
           keytool -genkeypair -v \
@@ -35,7 +36,7 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Build APK
+      - name: Build Debug APK
         run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
@@ -43,4 +44,4 @@ jobs:
         with:
           name: Kopi-Browser-APK
           path: app/build/outputs/apk/debug/*.apk
-          
+          if-no-files-found: error
