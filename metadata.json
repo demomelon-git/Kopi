@@ -1,0 +1,6 @@
+{
+  "name": "Kopi Browser",
+  "description": "Чистый, быстрый браузер на базе Chromium с поддержкой расширений, экспериментальных флагов kopi:// и системы Дата Копи.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
