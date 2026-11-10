@@ -18,7 +18,7 @@ import com.example.data.model.TabItem
         KopiExtension::class,
         SavedSite::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class KopiDatabase : RoomDatabase() {

@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Extension
 import com.example.ui.theme.ChromeBlue
 import com.example.ui.theme.KopiCyan
 
@@ -64,6 +65,7 @@ fun ChromeOmnibox(
     onRefreshClicked: () -> Unit,
     onStopClicked: () -> Unit,
     onTabSwitcherClicked: () -> Unit,
+    onExtensionsClicked: () -> Unit,
     onMenuClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -198,7 +200,24 @@ fun ChromeOmnibox(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Chrome Extension Action Button (Puzzle Piece)
+                IconButton(
+                    onClick = onExtensionsClicked,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("extensions_puzzle_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Extension,
+                        contentDescription = "Расширения и разрешения",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
 
                 // Chrome Tab Switcher Button with Count Badge
                 Box(

@@ -13,6 +13,7 @@ import com.example.data.model.SavedSite
 import com.example.data.model.SyncDevice
 import com.example.data.model.TabItem
 import com.example.data.repository.BrowserRepository
+import com.example.data.repository.CrxParser
 import com.example.data.repository.ExtensionEngine
 import com.example.data.repository.SyncRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,6 +105,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val _findMatchCount = MutableStateFlow(0)
     val findMatchCount: StateFlow<Int> = _findMatchCount.asStateFlow()
+
+    private val _activeExtensionAction = MutableStateFlow<KopiExtension?>(null)
+    val activeExtensionAction: StateFlow<KopiExtension?> = _activeExtensionAction.asStateFlow()
+
+    private val _showExtensionPermissions = MutableStateFlow<KopiExtension?>(null)
+    val showExtensionPermissions: StateFlow<KopiExtension?> = _showExtensionPermissions.asStateFlow()
+
+    private val _isExtensionsMenuVisible = MutableStateFlow(false)
+    val isExtensionsMenuVisible: StateFlow<Boolean> = _isExtensionsMenuVisible.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -329,6 +339,38 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.deleteExtension(id)
         }
+    }
+
+    suspend fun installCrx(bytes: ByteArray, fileName: String): Result<KopiExtension> {
+        return try {
+            val parsed = CrxParser.parseCrx(bytes, fileName)
+            repository.installExtension(parsed)
+            Result.success(parsed)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    fun toggleExtensionsMenu() {
+        _isExtensionsMenuVisible.value = !_isExtensionsMenuVisible.value
+    }
+
+    fun openExtensionAction(ext: KopiExtension) {
+        _activeExtensionAction.value = ext
+        _isExtensionsMenuVisible.value = false
+    }
+
+    fun closeExtensionAction() {
+        _activeExtensionAction.value = null
+    }
+
+    fun openExtensionPermissions(ext: KopiExtension) {
+        _showExtensionPermissions.value = ext
+    }
+
+    fun closeExtensionPermissions() {
+        _showExtensionPermissions.value = null
     }
 
     fun updateProfile(userId: String, email: String, kopiId: String) {

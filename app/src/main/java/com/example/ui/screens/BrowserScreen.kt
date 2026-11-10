@@ -10,31 +10,71 @@ import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.KopiExtension
@@ -44,8 +84,15 @@ import com.example.ui.components.ChromeMenu
 import com.example.ui.components.ChromeOmnibox
 import com.example.ui.components.ChromeTabSwitcher
 import com.example.ui.components.FindInPageBar
+import com.example.ui.theme.ChromeBlue
+import com.example.ui.theme.KopiCyan
+import com.example.ui.theme.KopiGreen
+import com.example.ui.theme.KopiPurple
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun BrowserScreen(
@@ -80,8 +127,37 @@ fun BrowserScreen(
     val isFindInPageActive by viewModel.isFindInPageActive.collectAsStateWithLifecycle()
     val findMatchCount by viewModel.findMatchCount.collectAsStateWithLifecycle()
 
+    val isExtensionsMenuVisible by viewModel.isExtensionsMenuVisible.collectAsStateWithLifecycle()
+    val showExtensionPermissions by viewModel.showExtensionPermissions.collectAsStateWithLifecycle()
+
     var isMenuExpanded by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // CRX File Picker launcher
+    val crxPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                try {
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }
+                    if (bytes != null) {
+                        val fileName = uri.lastPathSegment ?: "extension.crx"
+                        val result = viewModel.installCrx(bytes, fileName)
+                        if (result.isSuccess) {
+                            Toast.makeText(context, "CRX расширение '${result.getOrNull()?.name}' установлено!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Ошибка разбора CRX: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Не удалось открыть CRX: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     val currentTab = remember(tabs, currentTabId) {
         tabs.find { it.id == currentTabId }
@@ -92,6 +168,8 @@ fun BrowserScreen(
     // Back button handling
     BackHandler(enabled = true) {
         when {
+            isExtensionsMenuVisible -> viewModel.toggleExtensionsMenu()
+            showExtensionPermissions != null -> viewModel.closeExtensionPermissions()
             isTabSwitcherVisible -> viewModel.toggleTabSwitcher()
             activeInternalScreen != InternalScreen.None -> viewModel.closeInternalScreen()
             isFindInPageActive -> viewModel.setFindInPage(false)
@@ -121,7 +199,7 @@ fun BrowserScreen(
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
             } else {
-                settings.userAgentString = null // default mobile chromium
+                settings.userAgentString = null
                 settings.useWideViewPort = false
                 settings.loadWithOverviewMode = false
             }
@@ -149,7 +227,7 @@ fun BrowserScreen(
             .navigationBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Chrome Omnibox
+            // Chrome Omnibox with puzzle extension button
             ChromeOmnibox(
                 url = urlInput,
                 isLoading = isLoading,
@@ -159,6 +237,7 @@ fun BrowserScreen(
                 onRefreshClicked = { webViewRef?.reload() },
                 onStopClicked = { webViewRef?.stopLoading() },
                 onTabSwitcherClicked = { viewModel.toggleTabSwitcher() },
+                onExtensionsClicked = { viewModel.toggleExtensionsMenu() },
                 onMenuClicked = { isMenuExpanded = true }
             )
 
@@ -179,7 +258,6 @@ fun BrowserScreen(
 
             // Main Content Area
             Box(modifier = Modifier.weight(1f)) {
-                // Internal Screens
                 when (activeInternalScreen) {
                     InternalScreen.Flags -> {
                         FlagsScreen(
@@ -194,10 +272,24 @@ fun BrowserScreen(
                             extensions = extensions,
                             onToggleExtension = { viewModel.toggleExtension(it) },
                             onInstallExtension = { viewModel.installExtension(it) },
+                            onInstallCrxBytes = { bytes, fileName ->
+                                coroutineScope.launch {
+                                    val result = viewModel.installCrx(bytes, fileName)
+                                    if (result.isSuccess) {
+                                        Toast.makeText(context, "CRX расширение '${result.getOrNull()?.name}' установлено!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Ошибка разбора CRX: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
                             onDeleteExtension = { viewModel.deleteExtension(it) },
                             onOpenKubikStore = {
                                 viewModel.closeInternalScreen()
                                 viewModel.navigateTo("https://demomelon-git.github.io/kubik-web-store/")
+                            },
+                            onTriggerAction = { ext ->
+                                webViewRef?.evaluateJavascript(ext.scriptContent, null)
+                                Toast.makeText(context, "Действие расширения '${ext.name}' активировано", Toast.LENGTH_SHORT).show()
                             },
                             onClose = { viewModel.closeInternalScreen() }
                         )
@@ -306,13 +398,38 @@ fun BrowserScreen(
                                         cookieManager.setAcceptCookie(true)
                                         cookieManager.setAcceptThirdPartyCookies(this, false)
 
-                                        // Cubic Web Store and Data Kopi JavaScript Interface
+                                        // Download listener for .crx files
+                                        setDownloadListener { downloadUrl, _, _, mimetype, _ ->
+                                            if (downloadUrl.endsWith(".crx", ignoreCase = true) || mimetype.contains("chrome-extension")) {
+                                                Toast.makeText(ctx, "Загрузка CRX пакета...", Toast.LENGTH_SHORT).show()
+                                                coroutineScope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        val connection = java.net.URL(downloadUrl).openConnection()
+                                                        val bytes = connection.getInputStream().use { it.readBytes() }
+                                                        val fileName = downloadUrl.substringAfterLast("/")
+                                                        val res = viewModel.installCrx(bytes, fileName)
+                                                        withContext(Dispatchers.Main) {
+                                                            if (res.isSuccess) {
+                                                                Toast.makeText(ctx, "CRX расширение '${res.getOrNull()?.name}' установлено!", Toast.LENGTH_SHORT).show()
+                                                            } else {
+                                                                Toast.makeText(ctx, "Ошибка установки CRX: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(ctx, "Ошибка загрузки: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Kubik Web Store and Data Kopi JavaScript Interface
                                         addJavascriptInterface(
                                             object {
                                                 @JavascriptInterface
                                                 fun installExtensionFromStore(json: String) {
                                                     try {
-                                                        // Parse extension json from Kubik Web Store
                                                         val ext = KopiExtension(
                                                             id = "kubik_" + System.currentTimeMillis(),
                                                             name = "Kubik Store Addon",
@@ -322,7 +439,10 @@ fun BrowserScreen(
                                                             isEnabled = true,
                                                             matches = "*",
                                                             scriptContent = json,
-                                                            source = "Kubik Web Store"
+                                                            source = "Kubik Web Store",
+                                                            permissions = "activeTab, storage",
+                                                            hasActionButton = true,
+                                                            actionTitle = "Kubik Store Addon"
                                                         )
                                                         coroutineScope.launch {
                                                             viewModel.installExtension(ext)
@@ -394,7 +514,6 @@ fun BrowserScreen(
 
                                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                                 viewModel.setPageLoadingState(true, 10)
-                                                // Inject Data Kopi on page start
                                                 url?.let {
                                                     val dataScript = viewModel.repository.getDataKopiScript()
                                                     view?.evaluateJavascript(dataScript, null)
@@ -410,17 +529,16 @@ fun BrowserScreen(
                                                     view?.canGoForward() ?: false
                                                 )
 
-                                                // Inject Data Kopi + Cubic Web Store Extensions scripts
                                                 coroutineScope.launch {
                                                     val dataScript = viewModel.repository.getDataKopiScript()
                                                     val combined = viewModel.extensionEngine.getCombinedScriptsForUrl(finishedUrl, dataScript)
                                                     view?.evaluateJavascript(combined, null)
 
-                                                    // If Kubik Web Store, inject bridge helper
                                                     if (finishedUrl.contains("demomelon-git.github.io/kubik-web-store") ||
                                                         finishedUrl.contains("kubik-web-store") ||
                                                         finishedUrl.contains("demomelon-git.github.io/kubic-web-store") ||
-                                                        finishedUrl.contains("kubic-web-store")) {
+                                                        finishedUrl.contains("kubic-web-store")
+                                                    ) {
                                                         val bridgeScript = """
                                                             (function() {
                                                                 window.isKopiBrowser = true;
@@ -460,7 +578,7 @@ fun BrowserScreen(
             }
         }
 
-        // 3-Dots Chrome Menu Dropdown
+        // Chrome Menu Dropdown
         ChromeMenu(
             expanded = isMenuExpanded,
             onDismissRequest = { isMenuExpanded = false },
@@ -496,6 +614,193 @@ fun BrowserScreen(
                 onCloseAllTabs = { viewModel.closeAllTabs() },
                 onNewTab = { viewModel.createNewTab("kopi://newtab") },
                 onCloseSwitcher = { viewModel.toggleTabSwitcher() }
+            )
+        }
+
+        // Extensions Quick Action Bottom Sheet (Puzzle button in toolbar)
+        if (isExtensionsMenuVisible) {
+            ModalBottomSheet(
+                onDismissRequest = { viewModel.toggleExtensionsMenu() },
+                sheetState = rememberModalBottomSheetState()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(KopiPurple.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Extension,
+                                contentDescription = null,
+                                tint = KopiPurple,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Расширения и разрешения",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Быстрый запуск действий и проверка доступа",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { viewModel.toggleExtensionsMenu() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Закрыть")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val enabledExts = extensions.filter { it.isEnabled }
+                    if (enabledExts.isEmpty()) {
+                        Text(
+                            text = "Нет активных расширений. Вы можете установить .CRX файл или добавить из Kubik Web Store.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(enabledExts, key = { it.id }) { ext ->
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = ext.name,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(ChromeBlue.copy(alpha = 0.2f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = ext.source,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ChromeBlue
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = ext.description,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // Кнопка действия расширения
+                                        Button(
+                                            onClick = {
+                                                webViewRef?.evaluateJavascript(ext.scriptContent, null)
+                                                Toast.makeText(context, "Действие '${ext.name}' запущено!", Toast.LENGTH_SHORT).show()
+                                                viewModel.toggleExtensionsMenu()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ChromeBlue),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Запуск", fontSize = 11.sp)
+                                        }
+
+                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                        // Кнопка разрешения
+                                        OutlinedButton(
+                                            onClick = { viewModel.openExtensionPermissions(ext) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(14.dp), tint = KopiGreen)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.toggleExtensionsMenu()
+                                crxPickerLauncher.launch("*/*")
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Файл .CRX", fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.toggleExtensionsMenu()
+                                viewModel.openInternalScreen(InternalScreen.Extensions)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = KopiPurple)
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Управление", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Permissions Dialog for selected extension
+        showExtensionPermissions?.let { ext ->
+            ExtensionPermissionsDialog(
+                extension = ext,
+                onDismiss = { viewModel.closeExtensionPermissions() }
             )
         }
     }

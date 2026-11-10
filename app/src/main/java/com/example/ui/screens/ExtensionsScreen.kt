@@ -1,8 +1,11 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +28,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -53,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.KopiExtension
 import com.example.ui.theme.ChromeBlue
 import com.example.ui.theme.KopiCyan
+import com.example.ui.theme.KopiGreen
 import com.example.ui.theme.KopiPurple
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,12 +77,33 @@ fun ExtensionsScreen(
     extensions: List<KopiExtension>,
     onToggleExtension: (KopiExtension) -> Unit,
     onInstallExtension: (KopiExtension) -> Unit,
+    onInstallCrxBytes: (ByteArray, String) -> Unit,
     onDeleteExtension: (String) -> Unit,
     onOpenKubikStore: () -> Unit,
+    onTriggerAction: (KopiExtension) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
+    var permissionsExtension by remember { mutableStateOf<KopiExtension?>(null) }
+
+    // File picker launcher for .crx files
+    val crxFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null) {
+                    val fileName = uri.lastPathSegment ?: "extension.crx"
+                    onInstallCrxBytes(bytes, fileName)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Ошибка чтения CRX: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -88,7 +117,7 @@ fun ExtensionsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "kopi://extensions",
+                            text = "kopi://extensions • Поддержка CRX",
                             fontSize = 12.sp,
                             color = KopiPurple
                         )
@@ -103,6 +132,15 @@ fun ExtensionsScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { crxFilePicker.launch("*/*") },
+                        modifier = Modifier.testTag("install_crx_top_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = "Установить .CRX файл"
+                        )
+                    }
                     IconButton(
                         onClick = { showAddDialog = true },
                         modifier = Modifier.testTag("add_custom_extension_btn")
@@ -177,31 +215,53 @@ fun ExtensionsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "Каталог проверенных веб-расширений и скриптов для Kopi Browser. Установка в один клик с поддержкой прямого инжекта.",
+                            text = "Каталог веб-расширений и поддержка установки из локальных .crx файлов со встроенными кнопками действий и разрешениями.",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        ElevatedButton(
-                            onClick = onOpenKubikStore,
-                            colors = ButtonDefaults.elevatedButtonColors(
-                                containerColor = KopiPurple,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("open_kubik_store_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Открыть Kubik Web Store", fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ElevatedButton(
+                                onClick = onOpenKubikStore,
+                                colors = ButtonDefaults.elevatedButtonColors(
+                                    containerColor = KopiPurple,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("open_kubik_store_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Kubik Store", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            }
+
+                            ElevatedButton(
+                                onClick = { crxFilePicker.launch("*/*") },
+                                colors = ButtonDefaults.elevatedButtonColors(
+                                    containerColor = ChromeBlue,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("install_crx_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Из .CRX", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            }
                         }
                     }
                 }
@@ -214,18 +274,29 @@ fun ExtensionsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Установленные расширения (${extensions.size})",
+                        text = "Установленные (${extensions.size})",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedButton(
-                        onClick = { showAddDialog = true },
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Свой скрипт", fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { crxFilePicker.launch("*/*") },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Файл .CRX", fontSize = 11.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showAddDialog = true },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Скрипт", fontSize = 11.sp)
+                        }
                     }
                 }
             }
@@ -234,7 +305,9 @@ fun ExtensionsScreen(
                 ExtensionCard(
                     extension = ext,
                     onToggle = { onToggleExtension(ext) },
-                    onDelete = { onDeleteExtension(ext.id) }
+                    onDelete = { onDeleteExtension(ext.id) },
+                    onOpenPermissions = { permissionsExtension = ext },
+                    onTriggerAction = { onTriggerAction(ext) }
                 )
             }
 
@@ -253,13 +326,22 @@ fun ExtensionsScreen(
             }
         )
     }
+
+    permissionsExtension?.let { ext ->
+        ExtensionPermissionsDialog(
+            extension = ext,
+            onDismiss = { permissionsExtension = null }
+        )
+    }
 }
 
 @Composable
 private fun ExtensionCard(
     extension: KopiExtension,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onOpenPermissions: () -> Unit,
+    onTriggerAction: () -> Unit
 ) {
     var expandedCode by remember { mutableStateOf(false) }
 
@@ -297,12 +379,28 @@ private fun ExtensionCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = extension.name,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = extension.name,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(ChromeBlue.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = extension.source,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ChromeBlue
+                            )
+                        }
+                    }
                     Text(
                         text = "v${extension.version} • ${extension.author}",
                         fontSize = 11.sp,
@@ -331,44 +429,64 @@ private fun ExtensionCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Action Buttons: Run Action, Permissions Button, Code, Delete
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "Сайты: ${extension.matches}",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Кнопка действия расширения
+                    if (extension.hasActionButton && extension.isEnabled) {
+                        Button(
+                            onClick = onTriggerAction,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ChromeBlue,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.testTag("action_btn_${extension.id}")
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Действие", fontSize = 11.sp)
+                        }
+                    }
+
+                    // Кнопка разрешения
+                    OutlinedButton(
+                        onClick = onOpenPermissions,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("permissions_btn_${extension.id}")
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(14.dp), tint = KopiGreen)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Разрешения", fontSize = 11.sp)
+                    }
                 }
 
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { expandedCode = !expandedCode }) {
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (expandedCode) "Скрыть код" else "Код", fontSize = 12.sp)
+                        Text(if (expandedCode) "Скрыть" else "Код", fontSize = 11.sp)
                     }
 
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Удалить",
                             tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -393,6 +511,92 @@ private fun ExtensionCard(
             }
         }
     }
+}
+
+@Composable
+fun ExtensionPermissionsDialog(
+    extension: KopiExtension,
+    onDismiss: () -> Unit
+) {
+    val perms = extension.permissions.split(",").map { it.trim() }.filter { it.isNotBlank() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = ChromeBlue,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Разрешения расширения", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = extension.name,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Запрошенные разрешения из manifest.json (${extension.source}):",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (perms.isEmpty()) {
+                    Text(
+                        text = "Специальных системных разрешений не требуется.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    perms.forEach { perm ->
+                        val explanation = when (perm) {
+                            "activeTab" -> "Доступ к активной вкладке для выполнения скрипта"
+                            "storage" -> "Хранение локальных настроек расширения"
+                            "cookies" -> "Интеграция с контейнером Дата Копи"
+                            "tabs" -> "Чтение адресов открытых вкладок"
+                            "scripting" -> "Выполнение пользовательских скриптов"
+                            "<all_urls>", "*", "*://*/*" -> "Доступ ко всем посещаемым сайтам"
+                            else -> "Разрешение на системные функции: $perm"
+                        }
+                        Card(
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = perm, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(text = explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(KopiGreen.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(text = "Разрешено", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = KopiGreen)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Понятно")
+            }
+        }
+    )
 }
 
 @Composable
@@ -456,7 +660,10 @@ private fun AddExtensionDialog(
                             isEnabled = true,
                             matches = matches.ifBlank { "*" },
                             scriptContent = script,
-                            source = "User Script"
+                            source = "User Script",
+                            permissions = "activeTab, storage",
+                            hasActionButton = true,
+                            actionTitle = name
                         )
                         onConfirm(newExt)
                     }

@@ -39,7 +39,11 @@ data class KopiExtension(
     val isEnabled: Boolean = true,
     val matches: String = "*",
     val scriptContent: String,
-    val source: String = "Kubik Web Store"
+    val source: String = "Kubik Web Store",
+    val permissions: String = "storage, activeTab",
+    val hasActionButton: Boolean = true,
+    val popupHtml: String = "",
+    val actionTitle: String = ""
 )
 
 @Entity(tableName = "saved_sites")
