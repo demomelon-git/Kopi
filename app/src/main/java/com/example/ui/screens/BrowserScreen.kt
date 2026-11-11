@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -91,6 +92,7 @@ import com.example.ui.theme.KopiPurple
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -106,6 +108,7 @@ fun BrowserScreen(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
     val extensions by viewModel.extensions.collectAsStateWithLifecycle()
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val savedSites by viewModel.savedSites.collectAsStateWithLifecycle()
     val profile by viewModel.profile.collectAsStateWithLifecycle()
     val flags by viewModel.flags.collectAsStateWithLifecycle()
@@ -134,49 +137,97 @@ fun BrowserScreen(
     var isMenuExpanded by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-    fun downloadAndPromptExtension(targetUrl: String, customName: String? = null) {
-        Toast.makeText(context, "Загрузка пакета расширения...", Toast.LENGTH_SHORT).show()
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val finalUrl = when {
-                    targetUrl.startsWith("/") -> "https://demomelon-git.github.io$targetUrl"
-                    !targetUrl.startsWith("http://") && !targetUrl.startsWith("https://") ->
-                        "https://demomelon-git.github.io/kubik-web-store/$targetUrl"
-                    else -> targetUrl
-                }
-                val conn = java.net.URL(finalUrl).openConnection() as java.net.HttpURLConnection
-                conn.instanceFollowRedirects = true
-                conn.connectTimeout = 10000
-                conn.readTimeout = 15000
-                val bytes = conn.inputStream.use { it.readBytes() }
-                val fileName = customName ?: finalUrl.substringAfterLast("/").substringBefore("?")
-                val res = viewModel.prepareCrxForInstall(bytes, fileName)
-                withContext(Dispatchers.Main) {
-                    if (res.isFailure) {
-                        Toast.makeText(context, "Ошибка разбора CRX: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Не удалось загрузить CRX: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    fun isExtensionDownloadUrl(url: String): Boolean {
+    fun isKdExtensionUrl(url: String): Boolean {
         val clean = url.lowercase().substringBefore("?")
-        return clean.endsWith(".crx") ||
+        return clean.endsWith(".kd") ||
+                clean.endsWith(".crx") ||
                 clean.endsWith(".kubik") ||
                 clean.endsWith(".xpi") ||
-                clean.endsWith(".zip") ||
                 url.contains("addons/adocho/") ||
                 url.contains("addons/kubik/") ||
                 url.contains("addons/adoyan/")
     }
 
-    // CRX File Picker launcher
-    val crxPickerLauncher = rememberLauncherForActivityResult(
+    fun handleDownload(downloadUrl: String, contentDisposition: String? = null, mimetype: String? = null, customName: String? = null) {
+        if (isKdExtensionUrl(downloadUrl)) {
+            // KD Extension installation
+            Toast.makeText(context, "Загрузка KD расширения...", Toast.LENGTH_SHORT).show()
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val finalUrl = when {
+                        downloadUrl.startsWith("/") -> "https://demomelon-git.github.io$downloadUrl"
+                        !downloadUrl.startsWith("http://") && !downloadUrl.startsWith("https://") ->
+                            "https://demomelon-git.github.io/kubik-web-store/$downloadUrl"
+                        else -> downloadUrl
+                    }
+                    val conn = java.net.URL(finalUrl).openConnection() as java.net.HttpURLConnection
+                    conn.instanceFollowRedirects = true
+                    conn.connectTimeout = 12000
+                    conn.readTimeout = 20000
+                    val bytes = conn.inputStream.use { it.readBytes() }
+                    val fileName = customName ?: finalUrl.substringAfterLast("/").substringBefore("?")
+                    val res = viewModel.prepareKdForInstall(bytes, fileName)
+                    withContext(Dispatchers.Main) {
+                        if (res.isFailure) {
+                            Toast.makeText(context, "Ошибка разбора KD: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Не удалось загрузить KD: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        } else {
+            // Normal file download
+            Toast.makeText(context, "Начало загрузки файла...", Toast.LENGTH_SHORT).show()
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val guessedName = customName ?: URLUtil.guessFileName(downloadUrl, contentDisposition, mimetype)
+                    val downloadsDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                        ?: File(context.filesDir, "downloads").apply { mkdirs() }
+                    val targetFile = File(downloadsDir, guessedName)
+
+                    val conn = java.net.URL(downloadUrl).openConnection() as java.net.HttpURLConnection
+                    conn.instanceFollowRedirects = true
+                    val totalBytes = conn.contentLengthLong
+                    var readBytes = 0L
+
+                    conn.inputStream.use { input ->
+                        targetFile.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            var len = input.read(buffer)
+                            while (len != -1) {
+                                output.write(buffer, 0, len)
+                                readBytes += len
+                                len = input.read(buffer)
+                            }
+                        }
+                    }
+
+                    val finalSize = if (totalBytes > 0) totalBytes else targetFile.length()
+                    viewModel.addDownloadRecord(
+                        fileName = guessedName,
+                        url = downloadUrl,
+                        filePath = targetFile.absolutePath,
+                        size = finalSize,
+                        mimeType = mimetype ?: ""
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Файл '$guessedName' скачан в Загрузки!", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Ошибка загрузки файла: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    // KD File Picker launcher (accepts .kd and archives)
+    val kdPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
@@ -186,14 +237,14 @@ fun BrowserScreen(
                         context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     }
                     if (bytes != null) {
-                        val fileName = uri.lastPathSegment ?: "extension.crx"
-                        val result = viewModel.prepareCrxForInstall(bytes, fileName)
+                        val fileName = uri.lastPathSegment ?: "extension.kd"
+                        val result = viewModel.prepareKdForInstall(bytes, fileName)
                         if (result.isFailure) {
-                            Toast.makeText(context, "Ошибка разбора CRX: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Ошибка разбора KD пакета: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                         }
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Не удалось открыть CRX: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Не удалось открыть .KD файл: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -224,7 +275,12 @@ fun BrowserScreen(
     LaunchedEffect(currentUrl) {
         if (!currentUrl.startsWith("kopi://") && activeInternalScreen == InternalScreen.None) {
             webViewRef?.let { wv ->
-                if (wv.url != currentUrl) {
+                if (currentUrl.startsWith("kubik://") || viewModel.customSchemes.containsKey(currentUrl)) {
+                    val html = viewModel.customSchemes[currentUrl]
+                        ?: viewModel.customSchemes["kubik://new_tab"]
+                        ?: "<html><body><h1>Кубик Сайт</h1></body></html>"
+                    wv.loadDataWithBaseURL("https://127.0.0.1/", html, "text/html", "utf-8", null)
+                } else if (wv.url != currentUrl) {
                     wv.loadUrl(currentUrl)
                 }
             }
@@ -307,8 +363,8 @@ fun BrowserScreen(
                             extensions = extensions,
                             onToggleExtension = { viewModel.toggleExtension(it) },
                             onInstallExtension = { viewModel.installExtension(it) },
-                            onInstallCrxBytes = { bytes, fileName ->
-                                viewModel.prepareCrxForInstall(bytes, fileName)
+                            onInstallKdBytes = { bytes, fileName ->
+                                viewModel.prepareKdForInstall(bytes, fileName)
                             },
                             onUpdatePermissions = { ext, perms ->
                                 viewModel.updateExtensionPermissions(ext, perms)
@@ -320,7 +376,7 @@ fun BrowserScreen(
                             },
                             onTriggerAction = { ext ->
                                 webViewRef?.evaluateJavascript(ext.scriptContent, null)
-                                Toast.makeText(context, "Действие расширения '${ext.name}' активировано", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Действие KD расширения '${ext.name}' активировано", Toast.LENGTH_SHORT).show()
                             },
                             onClose = { viewModel.closeInternalScreen() }
                         )
@@ -352,6 +408,14 @@ fun BrowserScreen(
                             onPerformSync = { viewModel.performSync() },
                             onPairNewDevice = { code, name -> viewModel.pairNewDevice(code, name) },
                             onRemoveDevice = { viewModel.removeDevice(it) },
+                            onClose = { viewModel.closeInternalScreen() }
+                        )
+                    }
+                    InternalScreen.Downloads -> {
+                        DownloadsScreen(
+                            downloads = downloads,
+                            onDeleteDownload = { viewModel.deleteDownload(it) },
+                            onClearAllDownloads = { viewModel.clearAllDownloads() },
                             onClose = { viewModel.closeInternalScreen() }
                         )
                     }
@@ -424,47 +488,38 @@ fun BrowserScreen(
                                             cacheMode = WebSettings.LOAD_DEFAULT
                                         }
 
-                                        // Strict Data Kopi mode: configure CookieManager
+                                        // Strict Cookie Isolation: Cookies are NEVER saved!
                                         val cookieManager = CookieManager.getInstance()
-                                        cookieManager.setAcceptCookie(true)
+                                        cookieManager.setAcceptCookie(false)
                                         cookieManager.setAcceptThirdPartyCookies(this, false)
+                                        cookieManager.removeAllCookies(null)
+                                        cookieManager.removeSessionCookies(null)
+                                        cookieManager.flush()
 
-                                        // Download listener for extensions
-                                        setDownloadListener { downloadUrl, _, _, mimetype, _ ->
-                                            if (isExtensionDownloadUrl(downloadUrl) || mimetype.contains("chrome-extension") || mimetype.contains("octet-stream") || mimetype.contains("zip")) {
-                                                downloadAndPromptExtension(downloadUrl)
-                                            }
+                                        // Download listener for files and KD extensions
+                                        setDownloadListener { downloadUrl, _, contentDisposition, mimetype, _ ->
+                                            handleDownload(downloadUrl, contentDisposition, mimetype)
                                         }
 
-                                        // Kubik Web Store and Data Kopi JavaScript Interface
+                                        // KD Extension, Data Kopi and Scheme Bridge
                                         addJavascriptInterface(
                                             object {
                                                 @JavascriptInterface
                                                 fun installExtensionFromUrl(url: String, name: String) {
-                                                    downloadAndPromptExtension(url, name)
+                                                    handleDownload(url, customName = name)
                                                 }
 
                                                 @JavascriptInterface
-                                                fun installExtensionFromStore(json: String) {
-                                                    try {
-                                                        val ext = KopiExtension(
-                                                            id = "kubik_" + System.currentTimeMillis(),
-                                                            name = "Kubik Store Addon",
-                                                            version = "1.0",
-                                                            description = "Установлено из Kubik Web Store",
-                                                            author = "Kubik Developer",
-                                                            isEnabled = true,
-                                                            matches = "*",
-                                                            scriptContent = json,
-                                                            source = "Kubik Web Store",
-                                                            permissions = "activeTab, storage",
-                                                            hasActionButton = true,
-                                                            actionTitle = "Kubik Store Addon"
-                                                        )
-                                                        viewModel.showInstallPrompt(ext)
-                                                    } catch (e: Exception) {
-                                                        e.printStackTrace()
+                                                fun setNewTab(url: String) {
+                                                    viewModel.setNewTabUrl(url)
+                                                    coroutineScope.launch(Dispatchers.Main) {
+                                                        Toast.makeText(ctx, "Главная страница установлена: $url", Toast.LENGTH_SHORT).show()
                                                     }
+                                                }
+
+                                                @JavascriptInterface
+                                                fun registerCustomScheme(schemeUrl: String, html: String) {
+                                                    viewModel.registerCustomScheme(schemeUrl, html)
                                                 }
 
                                                 @JavascriptInterface
@@ -513,8 +568,18 @@ fun BrowserScreen(
                                                     return true
                                                 }
 
-                                                if (isExtensionDownloadUrl(urlString)) {
-                                                    downloadAndPromptExtension(urlString)
+                                                // Custom extension schemes (e.g. kubik://new_tab)
+                                                if (urlString.startsWith("kubik://") || viewModel.customSchemes.containsKey(urlString)) {
+                                                    val html = viewModel.customSchemes[urlString]
+                                                        ?: viewModel.customSchemes["kubik://new_tab"]
+                                                        ?: "<html><body><h1>Кубик Главная</h1></body></html>"
+                                                    view?.loadDataWithBaseURL("https://127.0.0.1/", html, "text/html", "utf-8", null)
+                                                    viewModel.onPageFinished(urlString, "Кубик — Главная", view?.canGoBack() ?: false, view?.canGoForward() ?: false)
+                                                    return true
+                                                }
+
+                                                if (isKdExtensionUrl(urlString)) {
+                                                    handleDownload(urlString)
                                                     return true
                                                 }
 
@@ -563,7 +628,14 @@ fun BrowserScreen(
                                         }
 
                                         if (currentUrl.isNotBlank() && !currentUrl.startsWith("kopi://")) {
-                                            loadUrl(currentUrl)
+                                            if (currentUrl.startsWith("kubik://") || viewModel.customSchemes.containsKey(currentUrl)) {
+                                                val html = viewModel.customSchemes[currentUrl]
+                                                    ?: viewModel.customSchemes["kubik://new_tab"]
+                                                    ?: "<html><body><h1>Кубик Главная</h1></body></html>"
+                                                loadDataWithBaseURL("https://127.0.0.1/", html, "text/html", "utf-8", null)
+                                            } else {
+                                                loadUrl(currentUrl)
+                                            }
                                         }
 
                                         webViewRef = this
@@ -652,7 +724,7 @@ fun BrowserScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Расширения и разрешения",
+                                text = "KD Расширения",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -674,7 +746,7 @@ fun BrowserScreen(
                     val enabledExts = extensions.filter { it.isEnabled }
                     if (enabledExts.isEmpty()) {
                         Text(
-                            text = "Нет активных расширений. Вы можете установить .CRX файл или добавить из Kubik Web Store.",
+                            text = "Нет активных KD расширений. Вы можете установить .KD файл или добавить из Kubik Web Store.",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 12.dp)
@@ -770,14 +842,14 @@ fun BrowserScreen(
                         OutlinedButton(
                             onClick = {
                                 viewModel.toggleExtensionsMenu()
-                                crxPickerLauncher.launch("*/*")
+                                kdPickerLauncher.launch("*/*")
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Файл .CRX", fontSize = 12.sp)
+                            Text("Файл .KD", fontSize = 12.sp)
                         }
 
                         Button(
@@ -804,7 +876,7 @@ fun BrowserScreen(
                 extension = ext,
                 onConfirm = {
                     val installed = viewModel.confirmInstallPendingExtension()
-                    Toast.makeText(context, "Расширение '${installed?.name}' успешно установлено!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Расширение '${installed?.name}' (.KD) успешно установлено!", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { viewModel.dismissInstallPendingExtension() }
             )

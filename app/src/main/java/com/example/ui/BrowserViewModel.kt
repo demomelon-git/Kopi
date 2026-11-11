@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.DataKopiStore
 import com.example.data.local.KopiDatabase
 import com.example.data.model.Bookmark
+import com.example.data.model.DownloadItem
 import com.example.data.model.HistoryItem
 import com.example.data.model.KopiExtension
 import com.example.data.model.KopiFlag
@@ -15,6 +16,7 @@ import com.example.data.model.TabItem
 import com.example.data.repository.BrowserRepository
 import com.example.data.repository.CrxParser
 import com.example.data.repository.ExtensionEngine
+import com.example.data.repository.KdParser
 import com.example.data.repository.SyncRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +34,7 @@ sealed class InternalScreen {
     object Sync : InternalScreen()
     object History : InternalScreen()
     object Bookmarks : InternalScreen()
+    object Downloads : InternalScreen()
     object Settings : InternalScreen()
 }
 
@@ -54,6 +57,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val extensions: StateFlow<List<KopiExtension>> = repository.extensions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val downloads: StateFlow<List<DownloadItem>> = repository.downloads
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val savedSites: StateFlow<List<SavedSite>> = repository.savedSites
@@ -118,7 +124,55 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val _pendingInstallExtension = MutableStateFlow<KopiExtension?>(null)
     val pendingInstallExtension: StateFlow<KopiExtension?> = _pendingInstallExtension.asStateFlow()
 
+    private val _customNewTabUrl = MutableStateFlow<String?>("kubik://new_tab")
+    val customNewTabUrl: StateFlow<String?> = _customNewTabUrl.asStateFlow()
+
+    val customSchemes = mutableMapOf<String, String>()
+
     init {
+        // Pre-register default KD schemes
+        customSchemes["kubik://new_tab"] = """
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Кубик — Главная страница</title>
+                <style>
+                    body { font-family: -apple-system, Roboto, sans-serif; background: #0F172A; color: #F8FAFC; margin: 0; padding: 32px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; text-align: center; }
+                    .logo { font-size: 44px; font-weight: 900; letter-spacing: -1px; margin-bottom: 8px; }
+                    .logo span:nth-child(1) { color: #EA4335; }
+                    .logo span:nth-child(2) { color: #FBBC05; }
+                    .logo span:nth-child(3) { color: #4285F4; }
+                    .logo span:nth-child(4) { color: #34A853; }
+                    .logo span:nth-child(5) { color: #EA4335; }
+                    .sub { font-size: 14px; color: #94A3B8; margin-bottom: 24px; }
+                    .search-box { display: flex; width: 100%; max-width: 540px; background: #1E293B; border-radius: 28px; padding: 6px 16px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+                    input { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px; padding: 10px 4px; }
+                    button { background: #3B82F6; color: #fff; border: none; border-radius: 20px; padding: 8px 18px; font-weight: bold; cursor: pointer; }
+                    .chips { display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; justify-content: center; }
+                    .chip { background: #1E293B; border: 1px solid #334155; padding: 8px 16px; border-radius: 20px; color: #38BDF8; text-decoration: none; font-size: 13px; font-weight: 600; }
+                    .badge { margin-top: 32px; font-size: 11px; background: rgba(56,189,248,0.15); color: #38BDF8; padding: 6px 14px; border-radius: 12px; }
+                </style>
+            </head>
+            <body>
+                <div class="logo"><span>К</span><span>у</span><span>б</span><span>и</span><span>к</span></div>
+                <div class="sub">Главная страница и поиск KD расширения (kubik://new_tab)</div>
+                <form class="search-box" action="https://www.google.com/search" method="get">
+                    <input type="text" name="q" placeholder="Поиск в Кубике или адрес..." autofocus autocomplete="off">
+                    <button type="submit">Найти</button>
+                </form>
+                <div class="chips">
+                    <a class="chip" href="https://demomelon-git.github.io/kubik-web-store/">Kubik Store</a>
+                    <a class="chip" href="https://127.0.0.1/">127.0.0.1</a>
+                    <a class="chip" href="kopi://downloads">Загрузки</a>
+                    <a class="chip" href="kopi://datakopi">Дата Копи</a>
+                </div>
+                <div class="badge">KD Extension Runtime • Active on kubik://new_tab</div>
+            </body>
+            </html>
+        """.trimIndent()
+
         viewModelScope.launch {
             extensionEngine.seedDefaultExtensionsIfNeeded()
             // Observe tabs to select initial tab
@@ -174,6 +228,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             normalized == "kopi://sync" -> _activeInternalScreen.value = InternalScreen.Sync
             normalized == "kopi://history" -> _activeInternalScreen.value = InternalScreen.History
             normalized == "kopi://bookmarks" -> _activeInternalScreen.value = InternalScreen.Bookmarks
+            normalized == "kopi://downloads" -> _activeInternalScreen.value = InternalScreen.Downloads
             normalized == "kopi://settings" -> _activeInternalScreen.value = InternalScreen.Settings
             normalized == "kopi://gs" -> {
                 // Direct Google Search / Kopi high-speed search
@@ -206,6 +261,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             InternalScreen.Sync -> _urlInput.value = "kopi://sync"
             InternalScreen.History -> _urlInput.value = "kopi://history"
             InternalScreen.Bookmarks -> _urlInput.value = "kopi://bookmarks"
+            InternalScreen.Downloads -> _urlInput.value = "kopi://downloads"
             InternalScreen.Settings -> _urlInput.value = "kopi://settings"
             InternalScreen.None -> _urlInput.value = currentTabUrl()
         }
@@ -222,14 +278,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun createNewTab(url: String = "kopi://newtab", isIncognito: Boolean = false) {
+        val resolvedUrl = if (url == "kopi://newtab" && _customNewTabUrl.value != null) {
+            _customNewTabUrl.value!!
+        } else {
+            url
+        }
         viewModelScope.launch {
-            val tab = repository.createNewTab(url, isIncognito)
+            val tab = repository.createNewTab(resolvedUrl, isIncognito)
             _currentTabId.value = tab.id
             _urlInput.value = tab.url
             _pageTitle.value = tab.title
             _isTabSwitcherVisible.value = false
             _activeInternalScreen.value = InternalScreen.None
-            checkBookmarked(url)
+            checkBookmarked(resolvedUrl)
         }
     }
 
@@ -361,9 +422,51 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _pendingInstallExtension.value = null
     }
 
-    fun prepareCrxForInstall(bytes: ByteArray, fileName: String): Result<KopiExtension> {
+    fun setNewTabUrl(url: String) {
+        _customNewTabUrl.value = url
+    }
+
+    fun registerCustomScheme(schemeUrl: String, html: String) {
+        customSchemes[schemeUrl] = html
+    }
+
+    fun addDownloadRecord(fileName: String, url: String, filePath: String, size: Long, mimeType: String) {
+        viewModelScope.launch {
+            repository.addDownload(
+                com.example.data.model.DownloadItem(
+                    fileName = fileName,
+                    url = url,
+                    filePath = filePath,
+                    fileSize = size,
+                    mimeType = mimeType,
+                    status = "COMPLETED",
+                    downloadedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    fun deleteDownload(id: Long) {
+        viewModelScope.launch {
+            repository.deleteDownload(id)
+        }
+    }
+
+    fun clearAllDownloads() {
+        viewModelScope.launch {
+            repository.clearDownloads()
+        }
+    }
+
+    fun prepareKdForInstall(bytes: ByteArray, fileName: String): Result<KopiExtension> {
         return try {
-            val parsed = CrxParser.parseCrx(bytes, fileName)
+            val parsed = KdParser.parseKd(bytes, fileName)
+            if (parsed.newTabOverrideUrl.isNotBlank()) {
+                setNewTabUrl(parsed.newTabOverrideUrl)
+            }
+            if (parsed.customSchemeUrl.isNotBlank() && parsed.customHtml.isNotBlank()) {
+                registerCustomScheme(parsed.customSchemeUrl, parsed.customHtml)
+            }
             _pendingInstallExtension.value = parsed
             Result.success(parsed)
         } catch (e: Exception) {
@@ -372,9 +475,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun prepareCrxForInstall(bytes: ByteArray, fileName: String): Result<KopiExtension> {
+        return prepareKdForInstall(bytes, fileName)
+    }
+
     suspend fun installCrx(bytes: ByteArray, fileName: String): Result<KopiExtension> {
         return try {
-            val parsed = CrxParser.parseCrx(bytes, fileName)
+            val parsed = KdParser.parseKd(bytes, fileName)
+            if (parsed.newTabOverrideUrl.isNotBlank()) {
+                setNewTabUrl(parsed.newTabOverrideUrl)
+            }
+            if (parsed.customSchemeUrl.isNotBlank() && parsed.customHtml.isNotBlank()) {
+                registerCustomScheme(parsed.customSchemeUrl, parsed.customHtml)
+            }
             repository.installExtension(parsed)
             Result.success(parsed)
         } catch (e: Exception) {

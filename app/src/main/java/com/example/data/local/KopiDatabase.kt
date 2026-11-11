@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.model.Bookmark
+import com.example.data.model.DownloadItem
 import com.example.data.model.HistoryItem
 import com.example.data.model.KopiExtension
 import com.example.data.model.SavedSite
@@ -16,9 +17,10 @@ import com.example.data.model.TabItem
         Bookmark::class,
         HistoryItem::class,
         KopiExtension::class,
-        SavedSite::class
+        SavedSite::class,
+        DownloadItem::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class KopiDatabase : RoomDatabase() {
@@ -35,7 +37,7 @@ abstract class KopiDatabase : RoomDatabase() {
                     KopiDatabase::class.java,
                     "kopi_browser.db"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
                 instance

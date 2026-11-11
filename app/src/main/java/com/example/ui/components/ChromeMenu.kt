@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Flag
@@ -192,6 +194,12 @@ fun ChromeMenu(
             title = "История",
             icon = Icons.Default.History,
             onClick = { onOpenScreen(InternalScreen.History); onDismissRequest() }
+        )
+
+        MenuEntry(
+            title = "Скачанные файлы",
+            icon = Icons.Default.Download,
+            onClick = { onOpenScreen(InternalScreen.Downloads); onDismissRequest() }
         )
 
         MenuEntry(

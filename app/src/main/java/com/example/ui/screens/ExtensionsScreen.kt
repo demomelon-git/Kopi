@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -79,7 +81,7 @@ fun ExtensionsScreen(
     extensions: List<KopiExtension>,
     onToggleExtension: (KopiExtension) -> Unit,
     onInstallExtension: (KopiExtension) -> Unit,
-    onInstallCrxBytes: (ByteArray, String) -> Unit,
+    onInstallKdBytes: (ByteArray, String) -> Unit,
     onUpdatePermissions: (KopiExtension, String) -> Unit,
     onDeleteExtension: (String) -> Unit,
     onOpenKubikStore: () -> Unit,
@@ -91,19 +93,19 @@ fun ExtensionsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var permissionsExtension by remember { mutableStateOf<KopiExtension?>(null) }
 
-    // File picker launcher for .crx files
-    val crxFilePicker = rememberLauncherForActivityResult(
+    // File picker launcher for .kd files
+    val kdFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes != null) {
-                    val fileName = uri.lastPathSegment ?: "extension.crx"
-                    onInstallCrxBytes(bytes, fileName)
+                    val fileName = uri.lastPathSegment ?: "extension.kd"
+                    onInstallKdBytes(bytes, fileName)
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Ошибка чтения CRX: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Ошибка чтения .KD файла: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -120,7 +122,7 @@ fun ExtensionsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "kopi://extensions • Поддержка CRX и Kubik Store",
+                            text = "kopi://extensions • Только формат .KD (HTML+JS)",
                             fontSize = 12.sp,
                             color = KopiPurple
                         )
@@ -136,21 +138,21 @@ fun ExtensionsScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { crxFilePicker.launch("*/*") },
-                        modifier = Modifier.testTag("install_crx_top_btn")
+                        onClick = { kdFilePicker.launch("*/*") },
+                        modifier = Modifier.testTag("install_kd_top_btn")
                     ) {
                         Icon(
                             imageVector = Icons.Default.FolderOpen,
-                            contentDescription = "Установить .CRX файл"
+                            contentDescription = "Установить .KD файл"
                         )
                     }
                     IconButton(
                         onClick = { showAddDialog = true },
-                        modifier = Modifier.testTag("add_custom_extension_btn")
+                        modifier = Modifier.testTag("add_custom_kd_btn")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = "Добавить расширение"
+                            contentDescription = "Создать KD расширение"
                         )
                     }
                 },
@@ -171,7 +173,7 @@ fun ExtensionsScreen(
             item {
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Kubik Web Store Primary Integration Banner
+                // KD Extension Format Info Banner
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
@@ -193,7 +195,7 @@ fun ExtensionsScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.ShoppingBag,
+                                    imageVector = Icons.Default.Extension,
                                     contentDescription = null,
                                     tint = KopiPurple,
                                     modifier = Modifier.size(24.dp)
@@ -202,13 +204,13 @@ fun ExtensionsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Kubik Web Store",
+                                    text = "Формат расширений: .KD",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "demomelon-git.github.io/kubik-web-store/",
+                                    text = "HTML + JS с командами set_new_tab() и схемами",
                                     fontSize = 11.sp,
                                     color = KopiCyan
                                 )
@@ -218,7 +220,7 @@ fun ExtensionsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "Официальный магазин расширений: прямая установка .CRX пакетов с проверкой прав, кнопками действий и изолированным выполнением.",
+                            text = "Поддерживаются только расширения формата .KD. В JS доступны кастомные команды: set_new_tab(url) (включая 127.0.0.1) и регистрация своих сайтов (например, kubik://new_tab).",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -247,7 +249,7 @@ fun ExtensionsScreen(
                             }
 
                             ElevatedButton(
-                                onClick = { crxFilePicker.launch("*/*") },
+                                onClick = { kdFilePicker.launch("*/*") },
                                 colors = ButtonDefaults.elevatedButtonColors(
                                     containerColor = ChromeBlue,
                                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -255,7 +257,7 @@ fun ExtensionsScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("install_crx_btn")
+                                    .testTag("install_kd_btn")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FolderOpen,
@@ -263,7 +265,7 @@ fun ExtensionsScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Из .CRX", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("Из .KD", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             }
                         }
                     }
@@ -277,19 +279,19 @@ fun ExtensionsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Установленные (${extensions.size})",
+                        text = "Установленные KD (${extensions.size})",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = { crxFilePicker.launch("*/*") },
+                            onClick = { kdFilePicker.launch("*/*") },
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Файл .CRX", fontSize = 11.sp)
+                            Text("Файл .KD", fontSize = 11.sp)
                         }
 
                         OutlinedButton(
@@ -298,14 +300,14 @@ fun ExtensionsScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Скрипт", fontSize = 11.sp)
+                            Text("Создать .KD", fontSize = 11.sp)
                         }
                     }
                 }
             }
 
             items(extensions, key = { it.id }) { ext ->
-                ExtensionCard(
+                KdExtensionCard(
                     extension = ext,
                     onToggle = { onToggleExtension(ext) },
                     onDelete = { onDeleteExtension(ext.id) },
@@ -321,7 +323,7 @@ fun ExtensionsScreen(
     }
 
     if (showAddDialog) {
-        AddExtensionDialog(
+        AddKdExtensionDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { newExt ->
                 onInstallExtension(newExt)
@@ -344,7 +346,7 @@ fun ExtensionsScreen(
 }
 
 @Composable
-private fun ExtensionCard(
+private fun KdExtensionCard(
     extension: KopiExtension,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
@@ -435,6 +437,40 @@ private fun ExtensionCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // Custom KD new tab / scheme indicators
+            if (extension.newTabOverrideUrl.isNotBlank() || extension.customSchemeUrl.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (extension.newTabOverrideUrl.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Home, contentDescription = null, modifier = Modifier.size(13.dp), tint = KopiCyan)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Новая вкладка: ${extension.newTabOverrideUrl}",
+                                fontSize = 11.sp,
+                                color = KopiCyan,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    if (extension.customSchemeUrl.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(13.dp), tint = KopiGreen)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Сайт: ${extension.customSchemeUrl}",
+                                fontSize = 11.sp,
+                                color = KopiGreen,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
 
             // Action Buttons: Run Action, Permissions Button, Code, Delete
@@ -483,7 +519,7 @@ private fun ExtensionCard(
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (expandedCode) "Скрыть" else "Код", fontSize = 11.sp)
+                        Text(if (expandedCode) "Скрыть" else "Код KD", fontSize = 11.sp)
                     }
 
                     IconButton(
@@ -501,7 +537,7 @@ private fun ExtensionCard(
             }
 
             AnimatedVisibility(visible = expandedCode) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
@@ -509,6 +545,15 @@ private fun ExtensionCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(10.dp)
                 ) {
+                    if (extension.customHtml.isNotBlank()) {
+                        Text(
+                            text = "<!-- KD HTML Template -->\n" + extension.customHtml.take(300) + if (extension.customHtml.length > 300) "..." else "",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            color = KopiCyan
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                     Text(
                         text = extension.scriptContent,
                         fontFamily = FontFamily.Monospace,
@@ -546,7 +591,7 @@ fun ExtensionPermissionsDialog(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
-                    Text("Кнопка разрешения", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Кнопка разрешения .KD", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     Text(extension.name, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -557,7 +602,7 @@ fun ExtensionPermissionsDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Управление правами доступа из manifest.json (${extension.source}):",
+                    text = "Управление правами доступа KD расширения (${extension.source}):",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -576,21 +621,20 @@ fun ExtensionPermissionsDialog(
                         items(rawPerms) { perm ->
                             val isAllowed = permStates[perm] ?: true
                             val explanation = when {
-                                perm.contains("google.com") -> "Доступ к выдаче поиска Google"
-                                perm.contains("bing.com") -> "Доступ к выдаче поиска Bing"
-                                perm.contains("brave.com") -> "Доступ к выдаче поиска Brave"
-                                perm.contains("duckduckgo.com") -> "Доступ к выдаче поиска DuckDuckGo"
+                                perm.contains("127.0.0.1") -> "Доступ к локальному адресу 127.0.0.1"
+                                perm.contains("google.com") -> "Доступ к поисковой выдаче Google"
+                                perm.contains("bing.com") -> "Доступ к выдаче Bing"
+                                perm.contains("brave.com") -> "Доступ к выдаче Brave"
+                                perm.contains("duckduckgo.com") -> "Доступ к поиску DuckDuckGo"
                                 perm.contains("startpage.com") -> "Доступ к поиску Startpage"
-                                perm.contains("youtube.com") -> "Доступ к веб-плееру YouTube"
-                                perm.contains("127.0.0.1") -> "Локальный интерфейс Кубика"
+                                perm.contains("youtube.com") -> "Доступ к YouTube"
                                 perm.contains("github.com") -> "Доступ к GitHub API"
-                                perm == "activeTab" -> "Доступ к активной вкладке браузера"
-                                perm == "storage" -> "Хранение настроек расширения"
+                                perm == "activeTab" -> "Доступ к активной вкладке"
+                                perm == "storage" -> "Локальные данные расширения (без cookies)"
                                 perm == "declarativeNetRequest" -> "Правила сетевых запросов"
-                                perm == "cookies" -> "Интеграция с контейнером Дата Копи"
-                                perm == "tabs" -> "Чтение открытых вкладок"
-                                perm == "scripting" -> "Выполнение скриптов на сайтах"
-                                perm in listOf("<all_urls>", "*", "*://*/*") -> "Доступ ко всем сайтам в сети"
+                                perm == "tabs" -> "Чтение вкладок"
+                                perm == "scripting" -> "Выполнение скриптов"
+                                perm in listOf("<all_urls>", "*", "*://*/*") -> "Доступ ко всем сайтам"
                                 else -> "Право доступа: $perm"
                             }
 
@@ -702,8 +746,8 @@ fun InstallExtensionPromptDialog(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
-                    Text("Установить расширение?", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("Kopi Browser • Chromium", fontSize = 11.sp, color = KopiPurple)
+                    Text("Установить расширение .KD?", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Kopi Browser • Формат KD", fontSize = 11.sp, color = KopiPurple)
                 }
             }
         },
@@ -730,6 +774,22 @@ fun InstallExtensionPromptDialog(
                             color = ChromeBlue,
                             fontWeight = FontWeight.SemiBold
                         )
+                        if (extension.newTabOverrideUrl.isNotBlank()) {
+                            Text(
+                                text = "Новая вкладка: ${extension.newTabOverrideUrl}",
+                                fontSize = 11.sp,
+                                color = KopiCyan,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        if (extension.customSchemeUrl.isNotBlank()) {
+                            Text(
+                                text = "Сайт расширения: ${extension.customSchemeUrl}",
+                                fontSize = 11.sp,
+                                color = KopiGreen,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = extension.description,
@@ -802,51 +862,84 @@ fun InstallExtensionPromptDialog(
 }
 
 @Composable
-private fun AddExtensionDialog(
+private fun AddKdExtensionDialog(
     onDismiss: () -> Unit,
     onConfirm: (KopiExtension) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var author by remember { mutableStateOf("Пользователь") }
     var description by remember { mutableStateOf("") }
-    var matches by remember { mutableStateOf("*") }
+    var newTabUrl by remember { mutableStateOf("kubik://new_tab") }
+    var customSchemeUrl by remember { mutableStateOf("kubik://new_tab") }
     var script by remember {
-        mutableStateOf("console.log('[Kopi Extension] Script loaded!');")
+        mutableStateOf("set_new_tab('kubik://new_tab');\nconsole.log('[KD Extension] Loaded!');")
+    }
+    var htmlContent by remember {
+        mutableStateOf("<h1>Кубик Новая Вкладка</h1><p>Сайт расширения kubik://new_tab</p>")
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Новое расширение") },
+        title = { Text("Новое KD расширение (HTML+JS)") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Название расширения") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Описание") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = matches,
-                    onValueChange = { matches = it },
-                    label = { Text("Фильтр сайтов (* для всех)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = script,
-                    onValueChange = { script = it },
-                    label = { Text("JavaScript инжект-код") },
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Название расширения") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Описание") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = newTabUrl,
+                        onValueChange = { newTabUrl = it },
+                        label = { Text("Адрес главной (команда set_new_tab)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = customSchemeUrl,
+                        onValueChange = { customSchemeUrl = it },
+                        label = { Text("Свой сайт (например, kubik://new_tab)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = htmlContent,
+                        onValueChange = { htmlContent = it },
+                        label = { Text("HTML шаблон сайта") },
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = script,
+                        onValueChange = { script = it },
+                        label = { Text("JavaScript код (set_new_tab, register_site)") },
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
@@ -854,25 +947,28 @@ private fun AddExtensionDialog(
                 onClick = {
                     if (name.isNotBlank() && script.isNotBlank()) {
                         val newExt = KopiExtension(
-                            id = "custom_" + System.currentTimeMillis(),
+                            id = "kd_" + System.currentTimeMillis(),
                             name = name,
                             version = "1.0.0",
-                            description = description.ifBlank { "Пользовательский UserScript" },
+                            description = description.ifBlank { "Пользовательское KD расширение" },
                             author = author,
                             isEnabled = true,
-                            matches = matches.ifBlank { "*" },
+                            matches = "*",
                             scriptContent = script,
-                            source = "User Script",
-                            permissions = "activeTab, storage",
+                            source = "Формат KD",
+                            permissions = "activeTab, storage, https://127.0.0.1/*",
                             hasActionButton = true,
-                            actionTitle = name
+                            actionTitle = name,
+                            newTabOverrideUrl = newTabUrl,
+                            customSchemeUrl = customSchemeUrl,
+                            customHtml = htmlContent
                         )
                         onConfirm(newExt)
                     }
                 },
                 enabled = name.isNotBlank() && script.isNotBlank()
             ) {
-                Text("Установить")
+                Text("Установить KD")
             }
         },
         dismissButton = {

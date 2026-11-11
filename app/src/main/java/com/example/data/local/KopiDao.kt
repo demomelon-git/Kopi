@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.data.model.Bookmark
+import com.example.data.model.DownloadItem
 import com.example.data.model.HistoryItem
 import com.example.data.model.KopiExtension
 import com.example.data.model.SavedSite
@@ -88,4 +89,20 @@ interface KopiDao {
 
     @Query("DELETE FROM saved_sites")
     suspend fun clearSavedSites()
+
+    // Downloads
+    @Query("SELECT * FROM downloads ORDER BY downloadedAt DESC")
+    fun getAllDownloads(): Flow<List<DownloadItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDownload(item: DownloadItem): Long
+
+    @Delete
+    suspend fun deleteDownload(item: DownloadItem)
+
+    @Query("DELETE FROM downloads WHERE id = :id")
+    suspend fun deleteDownloadById(id: Long)
+
+    @Query("DELETE FROM downloads")
+    suspend fun clearDownloads()
 }

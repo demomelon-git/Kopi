@@ -10,8 +10,72 @@ class ExtensionEngine(private val dao: KopiDao) {
 
         val DEFAULT_EXTENSIONS = listOf(
             KopiExtension(
+                id = "kd_kubik_search",
+                name = "Кубик Веб-поиск (.KD)",
+                version = "2.3.0",
+                description = "Главная страница и метапоиск с помощником Кубиком в формате KD (kubik://new_tab и 127.0.0.1).",
+                author = "Demomelon",
+                isEnabled = true,
+                matches = "*",
+                scriptContent = """
+                    (function() {
+                        if (typeof set_new_tab === 'function') {
+                            set_new_tab('kubik://new_tab');
+                        }
+                        console.log('[Kopi KD] Кубик Веб-поиск активен с поддержкой kubik://new_tab');
+                    })();
+                """.trimIndent(),
+                source = "Формат KD",
+                permissions = "activeTab, storage, https://127.0.0.1/*, https://www.google.com/*",
+                hasActionButton = true,
+                actionTitle = "Кубик Поиск",
+                newTabOverrideUrl = "kubik://new_tab",
+                customSchemeUrl = "kubik://new_tab",
+                customHtml = """
+                    <!DOCTYPE html>
+                    <html lang="ru">
+                    <head>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <title>Кубик — Главная страница</title>
+                        <style>
+                            body { font-family: -apple-system, Roboto, sans-serif; background: #0F172A; color: #F8FAFC; margin: 0; padding: 32px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; text-align: center; }
+                            .logo { font-size: 42px; font-weight: 900; letter-spacing: -1px; margin-bottom: 8px; }
+                            .logo span:nth-child(1) { color: #EA4335; }
+                            .logo span:nth-child(2) { color: #FBBC05; }
+                            .logo span:nth-child(3) { color: #4285F4; }
+                            .logo span:nth-child(4) { color: #34A853; }
+                            .logo span:nth-child(5) { color: #EA4335; }
+                            .sub { font-size: 14px; color: #94A3B8; margin-bottom: 24px; }
+                            .search-box { display: flex; width: 100%; max-width: 540px; background: #1E293B; border-radius: 28px; padding: 6px 16px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+                            input { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px; padding: 10px 4px; }
+                            button { background: #3B82F6; color: #fff; border: none; border-radius: 20px; padding: 8px 18px; font-weight: bold; cursor: pointer; }
+                            .chips { display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; justify-content: center; }
+                            .chip { background: #1E293B; border: 1px solid #334155; padding: 8px 16px; border-radius: 20px; color: #38BDF8; text-decoration: none; font-size: 13px; font-weight: 600; }
+                            .badge { margin-top: 32px; font-size: 11px; background: rgba(56,189,248,0.15); color: #38BDF8; padding: 6px 14px; border-radius: 12px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="logo"><span>К</span><span>у</span><span>б</span><span>и</span><span>к</span></div>
+                        <div class="sub">Метапоиск и главная страница KD расширения (kubik://new_tab)</div>
+                        <form class="search-box" action="https://www.google.com/search" method="get">
+                            <input type="text" name="q" placeholder="Поиск в Кубике или адрес..." autofocus autocomplete="off">
+                            <button type="submit">Найти</button>
+                        </form>
+                        <div class="chips">
+                            <a class="chip" href="https://demomelon-git.github.io/kubik-web-store/">Kubik Store</a>
+                            <a class="chip" href="https://127.0.0.1/">127.0.0.1</a>
+                            <a class="chip" href="kopi://downloads">Загрузки</a>
+                            <a class="chip" href="kopi://datakopi">Дата Копи</a>
+                        </div>
+                        <div class="badge">KD Extension Runtime • Active on kubik://new_tab</div>
+                    </body>
+                    </html>
+                """.trimIndent()
+            ),
+            KopiExtension(
                 id = "kopi_adshield",
-                name = "Kopi AdShield Pro",
+                name = "Kopi AdShield Pro (.KD)",
                 version = "2.4.0",
                 description = "Блокирует навязчивую рекламу, баннеры и трекеры на сайтах.",
                 author = "Kubik Web Store / Kopi Team",
@@ -34,14 +98,14 @@ class ExtensionEngine(private val dao: KopiDao) {
                         console.log('[Kopi AdShield] Active & shielding page.');
                     })();
                 """.trimIndent(),
-                source = "Kubik Web Store",
+                source = "Формат KD",
                 permissions = "activeTab, storage, declarativeNetRequest",
                 hasActionButton = true,
                 actionTitle = "AdShield Status"
             ),
             KopiExtension(
                 id = "kopi_dark_reader",
-                name = "Dark Reader for Kopi",
+                name = "Dark Reader for Kopi (.KD)",
                 version = "1.8.2",
                 description = "Интеллектуальная темная тема для всех страниц в сети.",
                 author = "Alexander S. (Kubik Store)",
@@ -65,57 +129,57 @@ class ExtensionEngine(private val dao: KopiDao) {
                         console.log('[Dark Reader for Kopi] Injected dark styles.');
                     })();
                 """.trimIndent(),
-                source = "Kubik Web Store",
+                source = "Формат KD",
                 permissions = "activeTab, <all_urls>",
                 hasActionButton = true,
                 actionTitle = "Dark Theme Toggle"
-            ),
-            KopiExtension(
-                id = "kopi_data_guard",
-                name = "Data Kopi Cookie-Replacement Guard",
-                version = "1.0.0",
-                description = "Заменяет обычные cookie безопасным контейнером Дата Копи (User ID, Email, Kopi ID).",
-                author = "Kopi Core Labs",
-                isEnabled = true,
-                matches = "*",
-                scriptContent = """
-                    (function() {
-                        window.isDataKopiProtected = true;
-                        console.log('[Data Kopi Guard] Cookie tracking replaced with Data Kopi container.');
-                    })();
-                """.trimIndent(),
-                source = "Kubik Web Store",
-                permissions = "storage, cookies",
-                hasActionButton = true,
-                actionTitle = "Data Kopi Status"
-            ),
-            KopiExtension(
-                id = "kopi_youtube_enhancer",
-                name = "YouTube Clean & Cinema Mode",
-                version = "3.1.5",
-                description = "Автоматически скрывает баннеры и улучшает плеер YouTube.",
-                author = "MediaCraft (Kubik Store)",
-                isEnabled = true,
-                matches = "youtube.com",
-                scriptContent = """
-                    (function() {
-                        if (!window.location.hostname.includes('youtube.com')) return;
-                        function cleanYT() {
-                            const ads = document.querySelectorAll('.ytp-ad-overlay-container, .ytp-ad-skip-button-container, ytd-banner-promo-renderer, #masthead-ad');
-                            ads.forEach(a => a.remove());
-                            const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern');
-                            if (skipBtn) skipBtn.click();
-                        }
-                        setInterval(cleanYT, 1000);
-                        console.log('[YouTube Clean Mode] Active.');
-                    })();
-                """.trimIndent(),
-                source = "Kubik Web Store",
-                permissions = "https://www.youtube.com/*, activeTab",
-                hasActionButton = true,
-                actionTitle = "YouTube Clean"
             )
         )
+
+        val KD_CUSTOM_COMMANDS_INJECTION = """
+            (function() {
+                window.kopi = window.kopi || {};
+
+                // Custom KD command: set_new_tab(url)
+                // Allows KD extensions to configure the browser's new tab page (e.g. 'kubik://new_tab', 'https://127.0.0.1/', etc.)
+                window.kopi.set_new_tab = function(url) {
+                    console.log('[Kopi KD Engine] set_new_tab called with url:', url);
+                    if (window.KopiBrowserBridge && window.KopiBrowserBridge.setNewTab) {
+                        window.KopiBrowserBridge.setNewTab(url);
+                    }
+                };
+                window.set_new_tab = window.kopi.set_new_tab;
+
+                // Custom KD command: register_site(schemeUrl, htmlContent)
+                // Allows KD extensions to create custom websites like kubik://new_tab
+                window.kopi.register_site = function(schemeUrl, htmlContent) {
+                    console.log('[Kopi KD Engine] register_site called for:', schemeUrl);
+                    if (window.KopiBrowserBridge && window.KopiBrowserBridge.registerCustomScheme) {
+                        window.KopiBrowserBridge.registerCustomScheme(schemeUrl, htmlContent || '');
+                    }
+                };
+                window.register_site = window.kopi.register_site;
+
+                // Custom KD command: get_data_kopi()
+                window.kopi.get_data_kopi = function() {
+                    if (window.KopiBrowserBridge) {
+                        return {
+                            userId: window.KopiBrowserBridge.getDataKopiUserId(),
+                            email: window.KopiBrowserBridge.getDataKopiEmail(),
+                            kopiId: window.KopiBrowserBridge.getDataKopiId()
+                        };
+                    }
+                    return {};
+                };
+
+                // Custom KD command: request_permission(domain)
+                window.kopi.request_permission = function(domain) {
+                    if (window.KopiBrowserBridge && window.KopiBrowserBridge.requestPermission) {
+                        window.KopiBrowserBridge.requestPermission(domain);
+                    }
+                };
+            })();
+        """.trimIndent()
 
         val CHROME_API_POLYFILL = """
             (function() {
@@ -274,7 +338,7 @@ class ExtensionEngine(private val dao: KopiDao) {
                             btn.style.marginLeft = '8px';
                             btn.style.fontWeight = 'bold';
                             btn.style.cursor = 'pointer';
-                            btn.textContent = '🚀 Установить в Kopi';
+                            btn.textContent = '🚀 Установить .KD в Kopi';
                             btn.onclick = function(e) {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -336,21 +400,24 @@ class ExtensionEngine(private val dao: KopiDao) {
         val enabledExtensions = dao.getEnabledExtensionsSync()
         val builder = StringBuilder()
 
-        // 1. Data Kopi identity replacement runtime
+        // 1. Data Kopi identity replacement runtime (strictly blocks cookies)
         builder.append(dataKopiScript).append("\n\n")
 
-        // 2. Chrome Extension API Polyfill
+        // 2. Custom KD Commands runtime (set_new_tab, register_site, etc.)
+        builder.append(KD_CUSTOM_COMMANDS_INJECTION).append("\n\n")
+
+        // 3. Chrome Extension API Polyfill
         builder.append(CHROME_API_POLYFILL).append("\n\n")
 
-        // 3. User & Store Extensions
+        // 4. KD Extensions
         for (ext in enabledExtensions) {
             if (isUrlMatching(url, ext.matches)) {
-                builder.append("/* Extension: ").append(ext.name).append(" */\n")
+                builder.append("/* KD Extension: ").append(ext.name).append(" */\n")
                 builder.append(ext.scriptContent).append("\n\n")
             }
         }
 
-        // 4. Kubik Store specific bridge if visiting the store
+        // 5. Kubik Store specific bridge if visiting the store
         if (url.contains("demomelon-git.github.io/kubik-web-store", ignoreCase = true) ||
             url.contains("kubik-web-store", ignoreCase = true) ||
             url.contains("demomelon-git.github.io/kubic-web-store", ignoreCase = true)

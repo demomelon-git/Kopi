@@ -39,11 +39,14 @@ data class KopiExtension(
     val isEnabled: Boolean = true,
     val matches: String = "*",
     val scriptContent: String,
-    val source: String = "Kubik Web Store",
+    val source: String = "Формат KD",
     val permissions: String = "storage, activeTab",
     val hasActionButton: Boolean = true,
     val popupHtml: String = "",
-    val actionTitle: String = ""
+    val actionTitle: String = "",
+    val newTabOverrideUrl: String = "",
+    val customSchemeUrl: String = "",
+    val customHtml: String = ""
 )
 
 @Entity(tableName = "saved_sites")
@@ -53,6 +56,18 @@ data class SavedSite(
     val title: String,
     val dataPayload: String = "{}",
     val savedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "downloads")
+data class DownloadItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val fileName: String,
+    val url: String,
+    val filePath: String,
+    val fileSize: Long = 0,
+    val mimeType: String = "",
+    val status: String = "COMPLETED", // DOWNLOADING, COMPLETED, FAILED
+    val downloadedAt: Long = System.currentTimeMillis()
 )
 
 data class KopiFlag(

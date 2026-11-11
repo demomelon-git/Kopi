@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.example.data.local.DataKopiStore
 import com.example.data.local.KopiDao
 import com.example.data.model.Bookmark
+import com.example.data.model.DownloadItem
 import com.example.data.model.HistoryItem
 import com.example.data.model.KopiExtension
 import com.example.data.model.SavedSite
@@ -107,6 +108,8 @@ class BrowserRepository(
         dao.insertExtension(extension)
     }
 
+    val downloads: Flow<List<DownloadItem>> = dao.getAllDownloads()
+
     suspend fun updateExtension(extension: KopiExtension) {
         dao.updateExtension(extension)
     }
@@ -119,15 +122,40 @@ class BrowserRepository(
         dao.clearSavedSites()
     }
 
+    suspend fun addDownload(item: DownloadItem): Long {
+        return dao.insertDownload(item)
+    }
+
+    suspend fun deleteDownload(id: Long) {
+        dao.deleteDownloadById(id)
+    }
+
+    suspend fun clearDownloads() {
+        dao.clearDownloads()
+    }
+
     fun getDataKopiScript(): String {
         val prof = profile.value
         return """
             (function() {
+                // Strictly block cookie persistence
+                try {
+                    Object.defineProperty(document, 'cookie', {
+                        get: function() { return ''; },
+                        set: function(val) {
+                            console.log('[Data Kopi Guard] Cookie persistence blocked. Site data stored in Data Kopi container instead.');
+                            return '';
+                        },
+                        configurable: false
+                    });
+                } catch(e) {}
+
+                // Replace cookies with Data Kopi container
                 window.DataKopi = {
                     userId: "${prof.userId}",
                     email: "${prof.email}",
                     kopiId: "${prof.kopiId}",
-                    isCookieReplaced: ${prof.isCookieReplacementActive},
+                    isCookieReplaced: true,
                     getCredentials: function() {
                         return { userId: "${prof.userId}", email: "${prof.email}", kopiId: "${prof.kopiId}" };
                     }
@@ -139,7 +167,7 @@ class BrowserRepository(
 
     fun extractDomain(url: String): String {
         return try {
-            if (url.startsWith("kopi://")) return url
+            if (url.startsWith("kopi://") || url.startsWith("kubik://")) return url
             val uri = URI(url)
             uri.host ?: url
         } catch (e: Exception) {
