@@ -129,9 +129,51 @@ fun BrowserScreen(
 
     val isExtensionsMenuVisible by viewModel.isExtensionsMenuVisible.collectAsStateWithLifecycle()
     val showExtensionPermissions by viewModel.showExtensionPermissions.collectAsStateWithLifecycle()
+    val pendingInstallExtension by viewModel.pendingInstallExtension.collectAsStateWithLifecycle()
 
     var isMenuExpanded by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    fun downloadAndPromptExtension(targetUrl: String, customName: String? = null) {
+        Toast.makeText(context, "Загрузка пакета расширения...", Toast.LENGTH_SHORT).show()
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val finalUrl = when {
+                    targetUrl.startsWith("/") -> "https://demomelon-git.github.io$targetUrl"
+                    !targetUrl.startsWith("http://") && !targetUrl.startsWith("https://") ->
+                        "https://demomelon-git.github.io/kubik-web-store/$targetUrl"
+                    else -> targetUrl
+                }
+                val conn = java.net.URL(finalUrl).openConnection() as java.net.HttpURLConnection
+                conn.instanceFollowRedirects = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 15000
+                val bytes = conn.inputStream.use { it.readBytes() }
+                val fileName = customName ?: finalUrl.substringAfterLast("/").substringBefore("?")
+                val res = viewModel.prepareCrxForInstall(bytes, fileName)
+                withContext(Dispatchers.Main) {
+                    if (res.isFailure) {
+                        Toast.makeText(context, "Ошибка разбора CRX: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Не удалось загрузить CRX: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun isExtensionDownloadUrl(url: String): Boolean {
+        val clean = url.lowercase().substringBefore("?")
+        return clean.endsWith(".crx") ||
+                clean.endsWith(".kubik") ||
+                clean.endsWith(".xpi") ||
+                clean.endsWith(".zip") ||
+                url.contains("addons/adocho/") ||
+                url.contains("addons/kubik/") ||
+                url.contains("addons/adoyan/")
+    }
 
     // CRX File Picker launcher
     val crxPickerLauncher = rememberLauncherForActivityResult(
@@ -145,10 +187,8 @@ fun BrowserScreen(
                     }
                     if (bytes != null) {
                         val fileName = uri.lastPathSegment ?: "extension.crx"
-                        val result = viewModel.installCrx(bytes, fileName)
-                        if (result.isSuccess) {
-                            Toast.makeText(context, "CRX расширение '${result.getOrNull()?.name}' установлено!", Toast.LENGTH_SHORT).show()
-                        } else {
+                        val result = viewModel.prepareCrxForInstall(bytes, fileName)
+                        if (result.isFailure) {
                             Toast.makeText(context, "Ошибка разбора CRX: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                         }
                     }
@@ -159,26 +199,28 @@ fun BrowserScreen(
         }
     }
 
-    val currentTab = remember(tabs, currentTabId) {
-        tabs.find { it.id == currentTabId }
-    }
+    val currentTab = tabs.find { it.id == currentTabId }
     val currentUrl = currentTab?.url ?: "kopi://newtab"
-    val isNewTab = currentUrl == "kopi://newtab" && activeInternalScreen == InternalScreen.None
+    val isNewTab = currentUrl == "kopi://newtab"
 
-    // Back button handling
+    // System Back navigation
     BackHandler(enabled = true) {
         when {
+            isFindInPageActive -> {
+                viewModel.setFindInPage(false)
+                webViewRef?.clearMatches()
+            }
             isExtensionsMenuVisible -> viewModel.toggleExtensionsMenu()
             showExtensionPermissions != null -> viewModel.closeExtensionPermissions()
+            pendingInstallExtension != null -> viewModel.dismissInstallPendingExtension()
             isTabSwitcherVisible -> viewModel.toggleTabSwitcher()
             activeInternalScreen != InternalScreen.None -> viewModel.closeInternalScreen()
-            isFindInPageActive -> viewModel.setFindInPage(false)
             webViewRef?.canGoBack() == true -> webViewRef?.goBack()
-            !isNewTab -> viewModel.navigateTo("kopi://newtab")
+            tabs.size > 1 && currentTabId != null -> viewModel.closeTab(currentTabId!!)
+            else -> (context as? android.app.Activity)?.finish()
         }
     }
 
-    // Effect to load URL when current tab or urlInput changes
     LaunchedEffect(currentUrl) {
         if (!currentUrl.startsWith("kopi://") && activeInternalScreen == InternalScreen.None) {
             webViewRef?.let { wv ->
@@ -189,13 +231,11 @@ fun BrowserScreen(
         }
     }
 
-    // Effect for desktop user-agent mode toggle
     LaunchedEffect(desktopMode) {
-        webViewRef?.let { wv ->
-            val settings = wv.settings
+        webViewRef?.settings?.let { settings ->
             if (desktopMode) {
                 settings.userAgentString =
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 KopiBrowser/1.0"
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 KopiBrowser/1.0"
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
             } else {
@@ -203,31 +243,23 @@ fun BrowserScreen(
                 settings.useWideViewPort = false
                 settings.loadWithOverviewMode = false
             }
-            if (wv.url != null && !wv.url!!.startsWith("kopi://")) {
-                wv.reload()
-            }
+            webViewRef?.reload()
         }
     }
 
-    // Find in page effect
-    LaunchedEffect(findInPageQuery) {
-        if (isFindInPageActive && findInPageQuery.isNotBlank()) {
-            webViewRef?.findAllAsync(findInPageQuery)
-        } else {
-            webViewRef?.clearMatches()
-            viewModel.setFindMatchCount(0)
-        }
-    }
-
-    Box(
+    Scaffold(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .navigationBarsPadding()
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Chrome Omnibox with puzzle extension button
+            .navigationBarsPadding(),
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Chrome Omnibox Bar
             ChromeOmnibox(
                 url = urlInput,
                 isLoading = isLoading,
@@ -241,12 +273,15 @@ fun BrowserScreen(
                 onMenuClicked = { isMenuExpanded = true }
             )
 
-            // Find in Page Bar
-            AnimatedVisibility(visible = isFindInPageActive) {
+            // Find in Page overlay
+            if (isFindInPageActive) {
                 FindInPageBar(
                     query = findInPageQuery,
                     matchCount = findMatchCount,
-                    onQueryChanged = { viewModel.setFindInPage(true, it) },
+                    onQueryChanged = { q ->
+                        viewModel.setFindInPage(true, q)
+                        webViewRef?.findAllAsync(q)
+                    },
                     onNextMatch = { webViewRef?.findNext(true) },
                     onPrevMatch = { webViewRef?.findNext(false) },
                     onClose = {
@@ -273,14 +308,10 @@ fun BrowserScreen(
                             onToggleExtension = { viewModel.toggleExtension(it) },
                             onInstallExtension = { viewModel.installExtension(it) },
                             onInstallCrxBytes = { bytes, fileName ->
-                                coroutineScope.launch {
-                                    val result = viewModel.installCrx(bytes, fileName)
-                                    if (result.isSuccess) {
-                                        Toast.makeText(context, "CRX расширение '${result.getOrNull()?.name}' установлено!", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Ошибка разбора CRX: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                }
+                                viewModel.prepareCrxForInstall(bytes, fileName)
+                            },
+                            onUpdatePermissions = { ext, perms ->
+                                viewModel.updateExtensionPermissions(ext, perms)
                             },
                             onDeleteExtension = { viewModel.deleteExtension(it) },
                             onOpenKubikStore = {
@@ -398,35 +429,21 @@ fun BrowserScreen(
                                         cookieManager.setAcceptCookie(true)
                                         cookieManager.setAcceptThirdPartyCookies(this, false)
 
-                                        // Download listener for .crx files
+                                        // Download listener for extensions
                                         setDownloadListener { downloadUrl, _, _, mimetype, _ ->
-                                            if (downloadUrl.endsWith(".crx", ignoreCase = true) || mimetype.contains("chrome-extension")) {
-                                                Toast.makeText(ctx, "Загрузка CRX пакета...", Toast.LENGTH_SHORT).show()
-                                                coroutineScope.launch(Dispatchers.IO) {
-                                                    try {
-                                                        val connection = java.net.URL(downloadUrl).openConnection()
-                                                        val bytes = connection.getInputStream().use { it.readBytes() }
-                                                        val fileName = downloadUrl.substringAfterLast("/")
-                                                        val res = viewModel.installCrx(bytes, fileName)
-                                                        withContext(Dispatchers.Main) {
-                                                            if (res.isSuccess) {
-                                                                Toast.makeText(ctx, "CRX расширение '${res.getOrNull()?.name}' установлено!", Toast.LENGTH_SHORT).show()
-                                                            } else {
-                                                                Toast.makeText(ctx, "Ошибка установки CRX: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                                            }
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        withContext(Dispatchers.Main) {
-                                                            Toast.makeText(ctx, "Ошибка загрузки: ${e.message}", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                }
+                                            if (isExtensionDownloadUrl(downloadUrl) || mimetype.contains("chrome-extension") || mimetype.contains("octet-stream") || mimetype.contains("zip")) {
+                                                downloadAndPromptExtension(downloadUrl)
                                             }
                                         }
 
                                         // Kubik Web Store and Data Kopi JavaScript Interface
                                         addJavascriptInterface(
                                             object {
+                                                @JavascriptInterface
+                                                fun installExtensionFromUrl(url: String, name: String) {
+                                                    downloadAndPromptExtension(url, name)
+                                                }
+
                                                 @JavascriptInterface
                                                 fun installExtensionFromStore(json: String) {
                                                     try {
@@ -444,10 +461,7 @@ fun BrowserScreen(
                                                             hasActionButton = true,
                                                             actionTitle = "Kubik Store Addon"
                                                         )
-                                                        coroutineScope.launch {
-                                                            viewModel.installExtension(ext)
-                                                            Toast.makeText(ctx, "Расширение из Kubik Store установлено!", Toast.LENGTH_SHORT).show()
-                                                        }
+                                                        viewModel.showInstallPrompt(ext)
                                                     } catch (e: Exception) {
                                                         e.printStackTrace()
                                                     }
@@ -499,6 +513,11 @@ fun BrowserScreen(
                                                     return true
                                                 }
 
+                                                if (isExtensionDownloadUrl(urlString)) {
+                                                    downloadAndPromptExtension(urlString)
+                                                    return true
+                                                }
+
                                                 if (urlString.startsWith("tel:") || urlString.startsWith("mailto:")) {
                                                     try {
                                                         val intent = Intent(Intent.ACTION_VIEW, uri)
@@ -533,23 +552,6 @@ fun BrowserScreen(
                                                     val dataScript = viewModel.repository.getDataKopiScript()
                                                     val combined = viewModel.extensionEngine.getCombinedScriptsForUrl(finishedUrl, dataScript)
                                                     view?.evaluateJavascript(combined, null)
-
-                                                    if (finishedUrl.contains("demomelon-git.github.io/kubik-web-store") ||
-                                                        finishedUrl.contains("kubik-web-store") ||
-                                                        finishedUrl.contains("demomelon-git.github.io/kubic-web-store") ||
-                                                        finishedUrl.contains("kubic-web-store")
-                                                    ) {
-                                                        val bridgeScript = """
-                                                            (function() {
-                                                                window.isKopiBrowser = true;
-                                                                window.installToKopi = function(script) {
-                                                                    window.KopiBrowserBridge.installExtensionFromStore(script);
-                                                                };
-                                                                console.log('[Kopi Engine] Kubik Web Store Bridge successfully attached.');
-                                                            })();
-                                                        """.trimIndent()
-                                                        view?.evaluateJavascript(bridgeScript, null)
-                                                    }
                                                 }
                                             }
                                         }
@@ -796,10 +798,27 @@ fun BrowserScreen(
             }
         }
 
+        // Install Extension Prompt Dialog (Confirm permissions & install)
+        pendingInstallExtension?.let { ext ->
+            InstallExtensionPromptDialog(
+                extension = ext,
+                onConfirm = {
+                    val installed = viewModel.confirmInstallPendingExtension()
+                    Toast.makeText(context, "Расширение '${installed?.name}' успешно установлено!", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { viewModel.dismissInstallPendingExtension() }
+            )
+        }
+
         // Permissions Dialog for selected extension
         showExtensionPermissions?.let { ext ->
             ExtensionPermissionsDialog(
                 extension = ext,
+                onSavePermissions = { updatedPerms ->
+                    viewModel.updateExtensionPermissions(ext, updatedPerms)
+                    viewModel.closeExtensionPermissions()
+                    Toast.makeText(context, "Разрешения для '${ext.name}' сохранены!", Toast.LENGTH_SHORT).show()
+                },
                 onDismiss = { viewModel.closeExtensionPermissions() }
             )
         }

@@ -107,6 +107,10 @@ class BrowserRepository(
         dao.insertExtension(extension)
     }
 
+    suspend fun updateExtension(extension: KopiExtension) {
+        dao.updateExtension(extension)
+    }
+
     suspend fun deleteExtension(id: String) {
         dao.deleteExtensionById(id)
     }

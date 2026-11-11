@@ -53,28 +53,32 @@ class BrowserUnitTest {
     }
 
     @Test
-    fun `test crx parser extracts manifest and content scripts`() {
+    fun `test crx parser extracts manifest, host permissions and content scripts`() {
         // Create an in-memory test CRX zip archive
         val baos = ByteArrayOutputStream()
         // Prefix with CRX header magic Cr24 + fake header bytes
         baos.write(byteArrayOf(0x43, 0x72, 0x32, 0x34, 0x02, 0x00, 0x00, 0x00))
 
         ZipOutputStream(baos).use { zos ->
-            // Add manifest.json
+            // Add manifest.json with Manifest V3 host_permissions
             val manifestJson = """
                 {
                     "manifest_version": 3,
-                    "name": "Test Kopi Ext",
-                    "version": "1.2.3",
-                    "description": "Test extension description",
-                    "author": "Kopi Dev",
-                    "permissions": ["storage", "activeTab", "cookies"],
+                    "name": "Кубик — главная и поиск",
+                    "version": "2.3.0",
+                    "description": "Главная страница и метапоиск с помощником Кубиком",
+                    "author": "Demomelon",
+                    "permissions": ["storage", "declarativeNetRequest"],
+                    "host_permissions": [
+                        "https://www.google.com/*",
+                        "https://api.bing.com/*"
+                    ],
                     "action": {
-                        "default_title": "Run Test Action"
+                        "default_title": "Поиск Кубик"
                     },
                     "content_scripts": [
                         {
-                            "matches": ["*://*.google.com/*"],
+                            "matches": ["https://www.google.com/search*"],
                             "js": ["content.js"]
                         }
                     ]
@@ -85,22 +89,23 @@ class BrowserUnitTest {
             zos.closeEntry()
 
             // Add content.js
-            val scriptContent = "console.log('Hello from CRX!');"
+            val scriptContent = "console.log('Hello from Kubik CRX!');"
             zos.putNextEntry(ZipEntry("content.js"))
             zos.write(scriptContent.toByteArray(StandardCharsets.UTF_8))
             zos.closeEntry()
         }
 
         val crxBytes = baos.toByteArray()
-        val parsed = CrxParser.parseCrx(crxBytes, "test.crx")
+        val parsed = CrxParser.parseCrx(crxBytes, "kubik-2.3.0.crx")
 
-        assertEquals("Test Kopi Ext", parsed.name)
-        assertEquals("1.2.3", parsed.version)
-        assertEquals("Test extension description", parsed.description)
-        assertEquals("Run Test Action", parsed.actionTitle)
+        assertEquals("Кубик — главная и поиск", parsed.name)
+        assertEquals("2.3.0", parsed.version)
+        assertEquals("Главная страница и метапоиск с помощником Кубиком", parsed.description)
+        assertEquals("Поиск Кубик", parsed.actionTitle)
         assertTrue(parsed.permissions.contains("storage"))
-        assertTrue(parsed.permissions.contains("activeTab"))
-        assertTrue(parsed.scriptContent.contains("Hello from CRX!"))
+        assertTrue(parsed.permissions.contains("declarativeNetRequest"))
+        assertTrue(parsed.permissions.contains("https://www.google.com/*"))
+        assertTrue(parsed.scriptContent.contains("Hello from Kubik CRX!"))
         assertTrue(parsed.hasActionButton)
     }
 }

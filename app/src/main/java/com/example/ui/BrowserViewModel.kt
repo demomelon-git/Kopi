@@ -115,6 +115,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val _isExtensionsMenuVisible = MutableStateFlow(false)
     val isExtensionsMenuVisible: StateFlow<Boolean> = _isExtensionsMenuVisible.asStateFlow()
 
+    private val _pendingInstallExtension = MutableStateFlow<KopiExtension?>(null)
+    val pendingInstallExtension: StateFlow<KopiExtension?> = _pendingInstallExtension.asStateFlow()
+
     init {
         viewModelScope.launch {
             extensionEngine.seedDefaultExtensionsIfNeeded()
@@ -341,6 +344,34 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun showInstallPrompt(extension: KopiExtension) {
+        _pendingInstallExtension.value = extension
+    }
+
+    fun confirmInstallPendingExtension(): KopiExtension? {
+        val ext = _pendingInstallExtension.value ?: return null
+        viewModelScope.launch {
+            repository.installExtension(ext)
+        }
+        _pendingInstallExtension.value = null
+        return ext
+    }
+
+    fun dismissInstallPendingExtension() {
+        _pendingInstallExtension.value = null
+    }
+
+    fun prepareCrxForInstall(bytes: ByteArray, fileName: String): Result<KopiExtension> {
+        return try {
+            val parsed = CrxParser.parseCrx(bytes, fileName)
+            _pendingInstallExtension.value = parsed
+            Result.success(parsed)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
     suspend fun installCrx(bytes: ByteArray, fileName: String): Result<KopiExtension> {
         return try {
             val parsed = CrxParser.parseCrx(bytes, fileName)
@@ -349,6 +380,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
+        }
+    }
+
+    fun updateExtensionPermissions(ext: KopiExtension, newPermissions: String) {
+        viewModelScope.launch {
+            val updated = ext.copy(permissions = newPermissions)
+            repository.updateExtension(updated)
+            if (_showExtensionPermissions.value?.id == ext.id) {
+                _showExtensionPermissions.value = updated
+            }
+        }
+    }
+
+    fun updateExtension(ext: KopiExtension) {
+        viewModelScope.launch {
+            repository.updateExtension(ext)
         }
     }
 

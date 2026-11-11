@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
@@ -53,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,6 +80,7 @@ fun ExtensionsScreen(
     onToggleExtension: (KopiExtension) -> Unit,
     onInstallExtension: (KopiExtension) -> Unit,
     onInstallCrxBytes: (ByteArray, String) -> Unit,
+    onUpdatePermissions: (KopiExtension, String) -> Unit,
     onDeleteExtension: (String) -> Unit,
     onOpenKubikStore: () -> Unit,
     onTriggerAction: (KopiExtension) -> Unit,
@@ -117,7 +120,7 @@ fun ExtensionsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "kopi://extensions • Поддержка CRX",
+                            text = "kopi://extensions • Поддержка CRX и Kubik Store",
                             fontSize = 12.sp,
                             color = KopiPurple
                         )
@@ -215,7 +218,7 @@ fun ExtensionsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "Каталог веб-расширений и поддержка установки из локальных .crx файлов со встроенными кнопками действий и разрешениями.",
+                            text = "Официальный магазин расширений: прямая установка .CRX пакетов с проверкой прав, кнопками действий и изолированным выполнением.",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -330,6 +333,11 @@ fun ExtensionsScreen(
     permissionsExtension?.let { ext ->
         ExtensionPermissionsDialog(
             extension = ext,
+            onSavePermissions = { updatedPerms ->
+                onUpdatePermissions(ext, updatedPerms)
+                permissionsExtension = null
+                Toast.makeText(context, "Разрешения для '${ext.name}' обновлены!", Toast.LENGTH_SHORT).show()
+            },
             onDismiss = { permissionsExtension = null }
         )
     }
@@ -463,7 +471,7 @@ private fun ExtensionCard(
                     ) {
                         Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(14.dp), tint = KopiGreen)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Разрешения", fontSize = 11.sp)
+                        Text("Кнопка разрешения", fontSize = 11.sp)
                     }
                 }
 
@@ -516,9 +524,15 @@ private fun ExtensionCard(
 @Composable
 fun ExtensionPermissionsDialog(
     extension: KopiExtension,
+    onSavePermissions: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val perms = extension.permissions.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    val rawPerms = extension.permissions.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
+    val permStates = remember(extension.id) {
+        mutableStateMapOf<String, Boolean>().apply {
+            rawPerms.forEach { this[it] = true }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -528,62 +542,239 @@ fun ExtensionPermissionsDialog(
                     imageVector = Icons.Default.Security,
                     contentDescription = null,
                     tint = ChromeBlue,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(24.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Разрешения расширения", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text("Кнопка разрешения", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(extension.name, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(
-                    text = extension.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Запрошенные разрешения из manifest.json (${extension.source}):",
+                    text = "Управление правами доступа из manifest.json (${extension.source}):",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (perms.isEmpty()) {
+
+                if (rawPerms.isEmpty()) {
                     Text(
                         text = "Специальных системных разрешений не требуется.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    perms.forEach { perm ->
-                        val explanation = when (perm) {
-                            "activeTab" -> "Доступ к активной вкладке для выполнения скрипта"
-                            "storage" -> "Хранение локальных настроек расширения"
-                            "cookies" -> "Интеграция с контейнером Дата Копи"
-                            "tabs" -> "Чтение адресов открытых вкладок"
-                            "scripting" -> "Выполнение пользовательских скриптов"
-                            "<all_urls>", "*", "*://*/*" -> "Доступ ко всем посещаемым сайтам"
-                            else -> "Разрешение на системные функции: $perm"
-                        }
-                        Card(
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.height(260.dp)
+                    ) {
+                        items(rawPerms) { perm ->
+                            val isAllowed = permStates[perm] ?: true
+                            val explanation = when {
+                                perm.contains("google.com") -> "Доступ к выдаче поиска Google"
+                                perm.contains("bing.com") -> "Доступ к выдаче поиска Bing"
+                                perm.contains("brave.com") -> "Доступ к выдаче поиска Brave"
+                                perm.contains("duckduckgo.com") -> "Доступ к выдаче поиска DuckDuckGo"
+                                perm.contains("startpage.com") -> "Доступ к поиску Startpage"
+                                perm.contains("youtube.com") -> "Доступ к веб-плееру YouTube"
+                                perm.contains("127.0.0.1") -> "Локальный интерфейс Кубика"
+                                perm.contains("github.com") -> "Доступ к GitHub API"
+                                perm == "activeTab" -> "Доступ к активной вкладке браузера"
+                                perm == "storage" -> "Хранение настроек расширения"
+                                perm == "declarativeNetRequest" -> "Правила сетевых запросов"
+                                perm == "cookies" -> "Интеграция с контейнером Дата Копи"
+                                perm == "tabs" -> "Чтение открытых вкладок"
+                                perm == "scripting" -> "Выполнение скриптов на сайтах"
+                                perm in listOf("<all_urls>", "*", "*://*/*") -> "Доступ ко всем сайтам в сети"
+                                else -> "Право доступа: $perm"
+                            }
+
+                            Card(
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isAllowed) KopiGreen.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant
+                                ),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = perm, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(text = explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Box(
+                                Row(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(KopiGreen.copy(alpha = 0.2f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Разрешено", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = KopiGreen)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = perm,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isAllowed) KopiGreen else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = explanation,
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = isAllowed,
+                                        onCheckedChange = { permStates[perm] = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = KopiGreen,
+                                            checkedTrackColor = KopiGreen.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = {
+                        rawPerms.forEach { permStates[it] = true }
+                    }) {
+                        Text("Разрешить все", fontSize = 12.sp, color = KopiGreen)
+                    }
+
+                    TextButton(onClick = {
+                        rawPerms.forEach { permStates[it] = false }
+                    }) {
+                        Text("Снять все", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val granted = rawPerms.filter { permStates[it] == true }.joinToString(", ")
+                    onSavePermissions(granted)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = ChromeBlue)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Сохранить разрешения")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        }
+    )
+}
+
+@Composable
+fun InstallExtensionPromptDialog(
+    extension: KopiExtension,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val perms = extension.permissions.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(KopiPurple.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Extension,
+                        contentDescription = null,
+                        tint = KopiPurple,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text("Установить расширение?", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Kopi Browser • Chromium", fontSize = 11.sp, color = KopiPurple)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = extension.name,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Версия ${extension.version} • ${extension.source}",
+                            fontSize = 11.sp,
+                            color = ChromeBlue,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = extension.description,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Запрашиваемые разрешения:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                if (perms.isEmpty()) {
+                    Text(
+                        text = "• Не требует специальных разрешений",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.height(180.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(perms) { perm ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = KopiGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(text = perm, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -592,8 +783,19 @@ fun ExtensionPermissionsDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) {
-                Text("Понятно")
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = ChromeBlue),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Разрешить и установить", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
             }
         }
     )
